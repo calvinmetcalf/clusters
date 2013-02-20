@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1">
+    <meta name="viewport" content="width=1024, user-scalable=no">
+    <style>
+      html { height: 100% }
+      body { height: 100%; margin: 0; padding: 0;}
+      #map{ height: 100% }
+    .leaflet-cluster-anim .leaflet-marker-icon, .leaflet-cluster-anim .leaflet-marker-shadow {
+    -webkit-transition: -webkit-transform 0.25s ease-out, opacity 0.25s ease-in;
+	-moz-transition: -moz-transform 0.25s ease-out, opacity 0.25s ease-in;
+	-o-transition: -o-transform 0.25s ease-out, opacity 0.25s ease-in;
+	transition: transform 0.25s ease-out, opacity 0.25s ease-in;
+	}
+    .marker-cluster-tiny {
+    background-color: rgba(181, 226, 140, 0.6);
+     
+    }
+.marker-cluster-tiny div {
+	background-color: rgba(110, 204, 57, 0.6);
+     
+	}
+
+.marker-cluster-small {
+    background-color: rgba(104, 98, 150, 0.6);
+   
+    }
+.marker-cluster-small div {
+	background-color: rgba(0, 17, 204, 0.6);
+    
+	}
+
+.marker-cluster-medium {
+	background-color: rgba(241, 211, 87, 0.6);
+     
+	}
+.marker-cluster-medium div {
+	background-color: rgba(240, 194, 12, 0.6);
+      
+	}
+
+.marker-cluster-large {
+	background-color: rgba(253, 156, 115, 0.6);
+       
+	}
+.marker-cluster-large div {
+	background-color: rgba(241, 128, 23, 0.6);
+
+	}
+
+.marker-cluster {
+    background-clip: padding-box;
+	border-radius: 20px;
+	}
+.marker-cluster div {
+	width: 30px;
+	height: 30px;
+	margin-left: 5px;
+	margin-top: 5px;
+
+	text-align: center;
+	border-radius: 15px;
+	font: 12px "Helvetica Neue", Arial, Helvetica, sans-serif;
+	}
+.marker-cluster span {
+	line-height: 30px;
+}
+    </style>
+  
+    <link rel="stylesheet" href="http://cdn.leafletjs.com/leaflet-0.5.1/leaflet.css" />
+
+<title>Clusters</title>
+<div id="map"></div>
+<script src="http://d3js.org/d3.v3.js"></script>
+
+<script src="http://cdn.leafletjs.com/leaflet-0.5.1/leaflet.js"></script>
+<script src="https://raw.github.com/mbostock/d3/5348d911938a0d1fdf43d7c86befbd908e431204/lib/colorbrewer/colorbrewer.js"></script>
+<script src="https://raw.github.com/Caligatio/jsSHA/release-1.42/src/sha1.js"></script>
+<script src="cluster.js"></script>
+<script>
+
+var m = L.map("map").setView([42.3164, -71.7],9);
+
+//make the map
+
+
+L.tileLayer("http://otile{s}.mqcdn.com/tiles/1.0.0/osm/{z}/{x}/{y}.jpeg",{minZoom:0,maxZoom:18,subdomains: '1234',attribution:'Tiles Courtesy of <a href="http://www.mapquest.com/">MapQuest</a> &mdash; Map data Map data &copy; <a href="http://openstreetmap.org">OpenStreetMap</a> contributors, <a href="http://creativecommons.org/licenses/by-sa/2.0/">CC-BY-SA</a>'}).addTo(m);
+//add a tileset	
+
+var pts = L.layerGroup().addTo(m);
+
+function Rtree(points,cb){
+    points = points || [];
+    
+    var worker = new Worker('aWorker.js');
+     worker.onmessage=function(event){
+         cb(event.data);
+     };
+     worker.postMessage({action:"create",points:points});
+    this.add = function(pts){
+       worker.postMessage({action:"add",points:pts});
+    };
+    this.bbox=function(blat1,blng1,blat2,blng2){
+        worker.postMessage({action:"bbox",bounds:[blat1,blng1,blat2,blng2]});
+    };
+    this.cluster=function(blat1,blng1,blat2,blng2){
+   
+        worker.postMessage({action:"cluster",bounds:[blat1,blng1,blat2,blng2,containerInc(200)]});
+    };
+    this.tree=function(){
+        worker.postMessage({action:"tree"})
+    }
+}
+
+var qt, bbox,points;
+
+function morePoints(lat,lng,num){
+    //compute random points
+    var randomLat = d3.random.normal(lat, .15),
+    randomLng = d3.random.normal(lng, .5);
+    points = d3.range(num).map(function() { return [randomLat(), randomLng()]; });
+    if(!qt){//if we don't have a quad tree make one
+        qt = new Rtree(points,redoMap);
+    }else{
+        //else add it to the current
+        qt.add(points);
+    }
+    redoBox(bbox);// update the map
+}
+
+function getHash(text){
+    //this is very much overkill but to make sure the same random style goes in everytime
+    var shaObj = new jsSHA(text, "TEXT");
+    return parseInt(shaObj.getHash("SHA-1", "HEX").slice(0,10),16)%11;
+}
+
+
+function redoBox(p){
+    p=p||[parseFloat(m.getBounds().toBBoxString().split(",")[1]),parseFloat(m.getBounds().toBBoxString().split(",")[0]),parseFloat(m.getBounds().toBBoxString().split(",")[3]),parseFloat(m.getBounds().toBBoxString().split(",")[2])];//make sure p is defined
+    
+    bbox=p;//update the bbox
+    if(hover){
+         m.removeLayer(hover);
+                     hover=null;
+    }
+    pts.clearLayers();
+    qt.cluster.apply(qt,p);
+}
+var p,
+_defaultIconCreateFunction = function (cluster) {
+    	var childCount = cluster[0];
+var size;
+		var c = ' marker-cluster-';
+		if (childCount < 10) {
+			c += 'tiny';
+            size = L.point(40, 40); 
+		} else if (childCount < 100) {
+			c += 'small';
+            size = L.point(40, 40); 
+		}else if (childCount < 500) {
+    		c += 'medium';
+            size = L.point(40, 40); 
+		} else {
+			c += 'large';
+            size = L.point(40, 40); 
+		}
+
+		return new L.DivIcon({ html: '<div><span>' + childCount + '</span></div>', className: 'marker-cluster' + c, iconSize: size});
+	}
+    var hover;
+function redoMap(event){
+    var v;
+    if(typeof event === "string"){
+        p=JSON.parse(event);
+        return;
+    }
+    if(event.console){
+        console.log(event.console);
+        return;
+    }
+    pts.clearLayers();
+    if(event.clusters){
+   event.clusters.forEach(function(v){
+ 
+    
+        
+         pts.addLayer(
+             L.marker(v[2],{icon:_defaultIconCreateFunction(v)}).on("mouseover",function(){
+                 if(!hover){
+                     hover = L.polygon(v[1]).addTo(m);
+                 }
+             }).on("mouseout",function(){
+                 if(hover){
+                     m.removeLayer(hover);
+                     hover=null;
+                 }
+             })
+             );//turn it into a marker wiht a popup
+   
+   });
+   }
+     if(event.points){
+       event.points.forEach(function(v){
+                 pts.addLayer(L.circleMarker(v,{stroke:false,fillOpacity:0.8,radius:6,color:colorbrewer.Spectral[11][getHash(JSON.stringify(v))],clickable:false}));//turn it into a marker wiht a popup
+});
+    } 
+}
+m.on("contextmenu moveend",function(){redoBox()});//so you can right click to add to map
+
+var AddButton= L.Control.extend({//creating the buttons
+    options: {
+        position: 'bottomleft'
+    },
+    onAdd: function (map) {
+        // create the control container with a particular class name
+        var div = L.DomUtil.create('div','bgroup');
+        var addButton = L.DomUtil.create('button', 'addStuff',div);
+        var numForm = L.DomUtil.create('input', 'addStuff',div);
+        numForm.type="text";
+        numForm.value = 10000;
+        addButton.type="button";
+        addButton.innerHTML="Add More Points";
+        L.DomEvent.addListener(addButton,"click",function(){
+            morePoints(map.getCenter().lat,map.getCenter().lng,numForm.value);//make sure it's where you currently are.
+            });
+    morePoints(map.getCenter().lat,map.getCenter().lng,numForm.value);
+        return div;
+    }
+});
+//add them to the map
+m.addControl(new AddButton());
+
+//this is the box selection thingy
+var BoxSelect = L.Map.BoxZoom.extend({
+	
+	_onMouseUp: function (e) {
+		this._pane.removeChild(this._box);
+		this._container.style.cursor = '';
+
+		L.DomUtil.enableTextSelection();
+
+		L.DomEvent
+		    .off(document, 'mousemove', this._onMouseMove)
+		    .off(document, 'mouseup', this._onMouseUp);
+
+		var map = this._map,
+		    layerPoint = map.mouseEventToLayerPoint(e);
+
+		if (this._startLayerPoint.equals(layerPoint)) { return; }
+
+		var bounds = new L.LatLngBounds(
+		        map.layerPointToLatLng(this._startLayerPoint),
+		        map.layerPointToLatLng(layerPoint));
+
+		map.fire("boxselectend", {
+			boxSelectBounds: [bounds.getSouthWest().lat,bounds.getSouthWest().lng,bounds.getNorthEast().lat,bounds.getNorthEast().lng]
+		});
+	}
+});
+m.boxZoom.disable();//turn off  the defult behavior
+var boxSelect = new BoxSelect(m);//new box select
+boxSelect.enable();//add it
+m.on("boxselectend",function(e){redoBox(e.boxSelectBounds);});//put the behavior in.
+function containerInc(inc){
+    var cont = [m.containerPointToLatLng([0,0]).lat-m.containerPointToLatLng([inc,inc]).lat,m.containerPointToLatLng([inc,inc]).lng-m.containerPointToLatLng([0,0]).lng];
+if (cont[0]<0) {cont[0]=0-cont[0]}
+if (cont[1]<0) {cont[1]=0-cont[1]}
+return cont;
+}
+</script>
