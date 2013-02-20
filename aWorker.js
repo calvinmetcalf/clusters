@@ -52,7 +52,7 @@ function addToR(pts){
       return [v[0].length,v[1],v[2]];
     })
   }else{
-    out.clusters=distanceCluster(tempclusters);
+    out.clusters=distanceCluster(tempclusters,size);
   }
   self.postMessage(out);
     }
@@ -60,8 +60,8 @@ function distanceCluster(clusters,size){
     var current = clusters.pop(),
     matched=[],
     notMatched=[],
-allpoints,
-out=[];
+    allpoints,
+    out=[];
     while(current){
         clusters.forEach(function(v){
             var dif=[
